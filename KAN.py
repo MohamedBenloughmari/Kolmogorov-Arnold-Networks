@@ -3,6 +3,27 @@ import torch.nn as nn
 from scipy.interpolate import BSpline
 
 
+def deBoor(k: int, x: int, t, c, p: int):
+    """Evaluates S(x).
+
+    Arguments
+    ---------
+    k: Index of knot interval that contains x.
+    x: Position.
+    t: Array of knot positions, needs to be padded as described above.
+    c: Array of control points.
+    p: Degree of B-spline.
+    """
+    d = [c[j + k - p] for j in range(0, p + 1)] 
+
+    for r in range(1, p + 1):
+        for j in range(p, r - 1, -1):
+            alpha = (x - t[j + k - p]) / (t[j + 1 + k - r] - t[j + k - p]) 
+            d[j] = (1.0 - alpha) * d[j - 1] + alpha * d[j]
+
+    return d[p]
+
+
 class bspline(nn.Module):
     def __init__(self,t_dim=10,c_dim=10):
         super(bspline, self).__init__()
@@ -10,12 +31,11 @@ class bspline(nn.Module):
         self.c_dim = c_dim
         self.t=nn.Parameter(torch.randn(t_dim))
         self.c=nn.Parameter(torch.randn(c_dim))
+        self.p=3
     def forward(self, x):
-        spline = BSpline(torch.sort(self.t).values.detach().cpu().numpy(),
-                         self.c.detach().cpu().numpy(),
-                         3)
-        y = spline(x.detach().cpu().numpy())
-        return torch.as_tensor(y, dtype=x.dtype, device=x.device)
+        k = find_k_batch(x, self.t, self.p, self.c)
+        spline = deBoor_batch(k, x, self.t, self.c, self.p)
+        return spline
 
 class bspline_array(nn.Module):
     def __init__(self, t_dim=10, c_dim=10, n=5):
