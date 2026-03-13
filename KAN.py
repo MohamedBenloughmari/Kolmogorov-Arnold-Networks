@@ -25,23 +25,24 @@ class bspline_array(nn.Module):
         return torch.stack([bs(x[i]) for i, bs in enumerate(self.bsplines)], dim=0)
 
 class KAN(nn.Module):
-    def __init__(self, t_dim=10, c_dim=10, n=5, m=7):
+    def __init__(self,p=3, c_dim=10, n=5, m=7):
         super(KAN, self).__init__()
-        self.t_dim = t_dim
+        self.t_dim = c_dim+p+1
         self.c_dim = c_dim
         self.n = n
         self.m = m
-        self.bspline_arrays = nn.ModuleList([bspline_array(t_dim, c_dim, n) for _ in range(m)])
+        self.p = p
+        self.bspline_arrays = nn.ModuleList([bspline_array(p, c_dim, m) for _ in range(n)])
     def forward(self, x):
-        return torch.stack([ba(x) for ba in self.bspline_arrays], dim=2).sum(dim=1)
-
+        return torch.stack([ba(x[j]) for j, ba in enumerate(self.bspline_arrays)], dim=1)
 
 
 if __name__ == "__main__":
     #test backward on bspline_arrat
-    bs_array = bspline_array()
-    x = torch.tensor([1.0,0.2,0.5,0.8,0.3], requires_grad=True)
-    output = bs_array(x)
-    print("bs_array(x):", output)
+    x=torch.randn(size=(5,7), requires_grad=True)
+    print("x:", x[0])
+    kan=KAN()
+    output = kan(x)
+    print("kan(x):", output)
     output.sum().backward()
     print("dx/dx:", x.grad)
