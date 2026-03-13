@@ -1,41 +1,17 @@
 import torch
 import torch.nn as nn
-from scipy.interpolate import BSpline
-
-
-def deBoor(k: int, x: int, t, c, p: int):
-    """Evaluates S(x).
-
-    Arguments
-    ---------
-    k: Index of knot interval that contains x.
-    x: Position.
-    t: Array of knot positions, needs to be padded as described above.
-    c: Array of control points.
-    p: Degree of B-spline.
-    """
-    d = [c[j + k - p] for j in range(0, p + 1)] 
-
-    for r in range(1, p + 1):
-        for j in range(p, r - 1, -1):
-            alpha = (x - t[j + k - p]) / (t[j + 1 + k - r] - t[j + k - p]) 
-            d[j] = (1.0 - alpha) * d[j - 1] + alpha * d[j]
-
-    return d[p]
-
+from Cox_deboor import cox_deboor
 
 class bspline(nn.Module):
-    def __init__(self,t_dim=10,c_dim=10):
+    def __init__(self,degree=3,c_dim=10):
         super(bspline, self).__init__()
-        self.t_dim = t_dim
+        self.t_dim = c_dim+degree+1
         self.c_dim = c_dim
-        self.t=nn.Parameter(torch.randn(t_dim))
+        self.t=nn.Parameter(torch.randn(self.t_dim))
         self.c=nn.Parameter(torch.randn(c_dim))
-        self.p=3
+        self.p=degree
     def forward(self, x):
-        k = find_k_batch(x, self.t, self.p, self.c)
-        spline = deBoor_batch(k, x, self.t, self.c, self.p)
-        return spline
+        return cox_deboor(self.t,self.c,self.p,x)
 
 class bspline_array(nn.Module):
     def __init__(self, t_dim=10, c_dim=10, n=5):
@@ -61,15 +37,10 @@ class KAN(nn.Module):
 
 
 if __name__ == "__main__":
-    batch = 4
-    bs = bspline()
-    bs_array = bspline_array()
-    kan = KAN()
-
-    x_bs = torch.randn(batch)        # (batch,)
-    x_arr = torch.randn(batch, 5)    # (batch, n=5)
-    x_mat = torch.randn(batch, 5)    # (batch, n=5)
-    print("bs(x):", bs(x_bs))                       # (batch,)
-    print("bs_array(x):", bs_array(x_arr))           # (batch, n)
-    print("KAN(x):", kan(x_mat))         # (batch, n, m)
-    print("KAN(x).shape:", kan(x_mat).shape)
+    bs=bspline()
+    x=torch.tensor([1.0], requires_grad=True)
+    output=bs(x)
+    print("bs(x):", output)
+    torch.autograd.set_detect_anomaly(True)
+    output.backward()
+    print("dx/dx:", x.grad)
