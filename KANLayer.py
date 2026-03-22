@@ -19,23 +19,30 @@ from spline import cox_deboor
 
 
 class KanLayer(nn.Module):
-    def __init__(self,input_dim:int,out_dim:int,degree: int=3,n_knots: int=10):
+    def __init__(self,input_dim:int,out_dim:int,degree: int=3,n_knots: int=5):
         super().__init__()
         self.input_dim=input_dim
         self.out_dim=out_dim
         self.degree=degree
         self.n_knots=n_knots
         self.c=nn.Parameter(torch.randn(size=(input_dim,out_dim,n_knots-degree),requires_grad=True))
-    def forward(self,x):
-        if len(x)!=self.input_dim:
-            raise(ValueError,"Dim Mismatch")
-        t=torch.linspace(-1,1,self.n_knots)
-        out=torch.zeros(size=(self.out_dim,))
-        for j in range(len(out)):
-            vals = torch.stack([torch.sum(cox_deboor(c=self.c[i, j],t=t,order=self.degree, x=x[i])) for i in range(self.input_dim)])
-            out[j] = vals.sum()
-        
-        return(out)
+        self.wb=nn.Parameter(torch.randn(size=(self.input_dim, self.out_dim),requires_grad=True))
+        self.ws=nn.Parameter(torch.randn(size=(self.input_dim, self.out_dim),requires_grad=True))
+    def forward(self, x):
+        scalar = x.dim() == 1
+        if scalar:
+            x = x.unsqueeze(0)
+        batch = x.shape[0]
+        if x.shape[1] != self.input_dim:
+            raise ValueError(f"Dim Mismatch: expected {self.input_dim}, got {x.shape[1]}")
+        t = torch.linspace(-1, 1, self.n_knots)
+        out = torch.zeros(batch, self.out_dim)
+        for j in range(self.out_dim):
+            for i in range(self.input_dim):
+                out[:, j] = out[:, j] + self.ws[i, j] * cox_deboor(c=self.c[i, j], t=t, order=self.degree, x=x[:, i]) + self.wb[i, j] * (x[:, i] / (1 + torch.exp(-x[:, i])))
+        if scalar:
+            return out.squeeze(0)
+        return out
     
 
 
@@ -58,7 +65,7 @@ def test_kan_layer_forward_shape():
 def test_kan_layer_backward_pass():
     input_dim = 2
     out_dim = 1
-    layer = KanLayer(input_dim, out_dim, degree=1, n_knots=4)
+    layer = KanLayer(input_dim, out_dim, degree=1, n_knots=10)
     input_tensor = torch.randn(input_dim)
     
     output = layer(input_tensor)

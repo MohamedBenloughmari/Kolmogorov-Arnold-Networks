@@ -1,31 +1,34 @@
 import torch
 
 
-def cox_deboor(c: torch.Tensor, t: torch.Tensor, order: int, x: float):
+def cox_deboor(c: torch.Tensor, t: torch.Tensor, order: int, x: torch.Tensor):
     n = len(c)
-    
-    # Degree-0 basis functions
-    b = ((t[:n] <= x) & (x < t[1:n+1])).float()
-    # Handle right endpoint: clamp last active basis
-    if x == t[-1]:
-        b[-1] = 1.0
+    scalar = x.dim() == 0
+    if scalar:
+        x = x.unsqueeze(0)
+    batch = x.shape[0]
 
-    # Cox-de Boor recursion (vectorized over k, iterating over degree j)
+    b = ((t[:n].unsqueeze(0) <= x.unsqueeze(1)) & (x.unsqueeze(1) < t[1:n+1].unsqueeze(0))).float()
+    right_end = (x == t[-1])
+    b[right_end, -1] = 1.0
+
     for j in range(1, order):
-        t_k   = t[:n]          # t[k]
-        t_kj  = t[j:n+j]      # t[k+j]
-        t_k1  = t[1:n+1]      # t[k+1]
-        t_kj1 = t[j+1:n+j+1]  # t[k+j+1]
+        t_k   = t[:n]
+        t_kj  = t[j:n+j]
+        t_k1  = t[1:n+1]
+        t_kj1 = t[j+1:n+j+1]
 
         denom1 = t_kj - t_k
         denom2 = t_kj1 - t_k1
 
-        w1 = torch.where(denom1 != 0, (x - t_k) / denom1, torch.zeros(n))
-        w2 = torch.where(denom2 != 0, (t_kj1 - x) / denom2, torch.zeros(n))
+        w1 = torch.where(denom1 != 0, (x.unsqueeze(1) - t_k.unsqueeze(0)) / denom1.unsqueeze(0), torch.zeros(batch, n))
+        w2 = torch.where(denom2 != 0, (t_kj1.unsqueeze(0) - x.unsqueeze(1)) / denom2.unsqueeze(0), torch.zeros(batch, n))
 
-        b = w1 * b + w2 * torch.cat([b[1:], torch.zeros(1)])
+        b = w1 * b + w2 * torch.cat([b[:, 1:], torch.zeros(batch, 1)], dim=1)
 
-    # Weighted sum over control points
-    return (b * c).sum()
+    result = (b * c.unsqueeze(0)).sum(dim=1)
+    if scalar:
+        return result.squeeze(0)
+    return result
 
 
